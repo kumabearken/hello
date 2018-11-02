@@ -1,0 +1,362 @@
+// ============================================================================
+//   Author:  Ken Kumagai,Yanjie Shi, Kenji Uchida
+//   Date:  10/01/2018
+//   File: Lexer.cpp
+//   Description: The following demonstrates the implementation of
+//     Lexer using a table driven Finite State Machine.
+// ============================================================================
+
+#include <iostream>
+#include <cstdlib>
+#include <cctype>
+#include <string>
+#include <vector>
+#include <fstream>
+using namespace std;
+
+//global array size
+const int ARRSEP = 7;
+
+// global token state array
+// idenState[0] = first identifier tester
+// idenState[1] = test for 2nd identifier
+// idenState[2] = for all identifiers
+bool idenState[3] = { true,false,false };
+
+//opState[0] tests if first operator was an assignment
+bool opState[1] = { false };
+// if triggered statement breaks syntax
+bool invalid[1] = { false };
+bool sepstate[2];
+
+
+
+enum FSM_TRANSITIONS
+{
+	REJECT = 0,
+	INTEGER,
+	REAL,
+	OPERATOR,
+	IDENTIFIER,
+	UNKNOWN,
+	SPACE,
+	KEYWORD,
+	BOOL,
+	SEPARATOR
+};
+
+//KEYWORDS
+string keywords[9] = { "int","if","else","endif","while","return","get","put"
+,"boolean" };
+string bools[2] = { "true","false" };
+char separator[ARRSEP] = { '(',')','{','}','[',']',';' };
+
+/*                           integer,    real,    operator,   identifier, unknown, space,  keyword, bool,   separator*/
+int stateTable[][10] = { {0,  INTEGER,    REAL,    OPERATOR,   IDENTIFIER, UNKNOWN, SPACE,  KEYWORD, BOOL,   SEPARATOR},
+/* STATE 1 */   {INTEGER,    INTEGER,    REAL,    REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT},
+/* STATE 2 */   {REAL,       REAL,       UNKNOWN, REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT},
+/* STATE 3 */   {OPERATOR,   REJECT,     REJECT,  REJECT,     IDENTIFIER, REJECT,  REJECT, REJECT,  REJECT, REJECT},
+/* STATE 4 */   {IDENTIFIER, IDENTIFIER, REJECT,  IDENTIFIER, IDENTIFIER, REJECT,  REJECT, REJECT,  REJECT, REJECT},
+/* STATE 5 */   {UNKNOWN,    UNKNOWN,    UNKNOWN, UNKNOWN,    UNKNOWN,    UNKNOWN, REJECT, REJECT,  REJECT, REJECT},
+/* STATE 6 */   {SPACE,      REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT},
+/* STATE 7 */   {KEYWORD,    KEYWORD,    REJECT,  KEYWORD,    KEYWORD,    REJECT,  REJECT, KEYWORD, REJECT, REJECT},
+/* STATE 8 */   {BOOL,       REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  BOOL,   REJECT},
+/* STATE 9 */   {SEPARATOR,  REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT}
+};
+
+struct TokenType
+{
+	string token;
+	int lexeme;
+	string lexemeName;
+};
+
+vector<TokenType> Lexer(string expression);
+int Get_FSM_Col(char currentChar);
+string GetLexemeName(int lexeme); 
+void parser(vector<TokenType> toks, int pos);
+
+int main()
+{
+	ifstream infile;
+	string fileName = "";
+	string expression = "";
+	vector<TokenType> tokens;
+
+	cout << "Please enter the name of the file: ";
+	getline(cin, fileName);
+
+	infile.open(fileName.c_str());
+
+	if (infile.fail())
+	{
+		cout << "n** ERROR - the file ""<<fileName<<"" cannot be found!";
+		system("pause");
+		exit(1);
+	}
+
+	cout << "Token					Lexeme" << endl;
+	cout << "_______________________________________________" << endl;
+	while (getline(infile, expression))
+	{
+		tokens = Lexer(expression);
+		
+		for (unsigned i = 0; i < tokens.size(); ++i)
+		{
+			cout << tokens[i].lexemeName << "					"
+				<< tokens[i].token << endl;
+			parser(tokens,i);
+			cout << '\n';
+		}
+	}
+
+	infile.close();
+	system("pause");
+	return 0;
+}
+
+/**
+* FUNCTION: Lexer
+* USE: Parses the "expression" string using the Finite State Machine to
+*     isolate each individual token and lexeme name in the expression.
+* param expression - A std::string containing text.
+* return - Returns a vector containing the tokens found in the string
+*/
+vector<TokenType> Lexer(string expression)
+{
+	TokenType access;
+	vector<TokenType> tokens;
+	char currentChar = ' ';
+	int col = REJECT;
+	int currentState = REJECT;
+	int prevState = REJECT;
+	string currentToken = "";
+
+	for (unsigned x = 0; x < expression.length();)
+	{
+		currentChar = expression[x];
+
+		col = Get_FSM_Col(currentChar);
+
+		currentState = stateTable[currentState][col];
+
+		if (currentState == REJECT)
+		{
+			if (prevState != SPACE)
+			{
+				for (int i = 0; i < 9; ++i)
+				{
+					if (currentToken == keywords[i])
+					{
+						prevState = KEYWORD;
+					}
+				}
+				for (int i = 0; i < 2; ++i)
+				{
+					if (currentToken == bools[i])
+					{
+						prevState = BOOL;
+					}
+				}
+				access.token = currentToken;
+				access.lexeme = prevState;
+				access.lexemeName = GetLexemeName(access.lexeme);
+				tokens.push_back(access);
+			}
+			currentToken = "";
+		}
+		else
+		{
+			currentToken += currentChar;
+			++x;
+		}
+		prevState = currentState;
+
+	}
+	if (currentState != SPACE && currentToken != "")
+	{
+		access.token = currentToken;
+		access.lexeme = currentState;
+		access.lexemeName = GetLexemeName(access.lexeme);
+		tokens.push_back(access);
+	}
+	return tokens;
+}
+
+/**
+* FUNCTION: Get_FSM_Col
+* USE: Determines the state of the type of character being examined.
+* param currentChar - A character.
+* return - Returns the state of the type of character being examined.
+*/
+int Get_FSM_Col(char currentChar)
+{
+	// check for whitespace
+	if (isspace(currentChar))
+	{
+		return SPACE;
+	}
+
+	// check for integer numbers
+	else if (isdigit(currentChar))
+	{
+		return INTEGER;
+	}
+
+	// check for real numbers
+	else if (currentChar == '.')
+	{
+		return REAL;
+	}
+
+	// check for characters
+	else if (isalpha(currentChar))
+	{
+		return IDENTIFIER;
+	}
+
+	// check for operators and separators
+	else if (ispunct(currentChar))
+	{
+		for (int i = 0; i < ARRSEP; ++i)
+		{
+			if (currentChar == separator[i])
+			{
+				return SEPARATOR;
+			}
+		}
+		return OPERATOR;
+	}
+	return UNKNOWN;
+}
+
+/**
+* FUNCTION: GetLexemeName
+* USE: Returns the string equivalent of an integer lexeme token type.
+* param lexeme - An integer lexeme token type.
+* return - An std::string string representing the name of the integer
+*        lexeme token type.
+*/
+string GetLexemeName(int lexeme)
+{
+	switch (lexeme)
+	{
+	case INTEGER:
+		return "INTEGER";
+		break;
+	case REAL:
+		return "REAL  ";
+		break;
+	case OPERATOR:
+		return "OPERATOR";
+		break;
+	case IDENTIFIER:
+		return "IDENTIFIER";
+		break;
+	case UNKNOWN:
+		return "UNKNOWN";
+		break;
+	case SPACE:
+		return "SPACE";
+		break;
+	case KEYWORD:
+		return "KEYWORD";
+		break;
+	case BOOL:
+		return "BOOL";
+		break;
+	case SEPARATOR:
+		return "SEPARATOR";
+		break;
+	default:
+		return "ERROR";
+		break;
+	}
+}
+void parser(vector<TokenType> toks,int pos)
+{
+	char tokChar;
+	string lexName;
+	string tokName;
+	TokenType someToken;
+	someToken=toks.at(pos);
+	lexName = someToken.lexemeName;
+	tokName = someToken.token;
+	tokChar = tokName[0];
+	if (invalid[0] == true)
+		cout << "invalid!";
+	else
+	{
+		if (lexName == "IDENTIFIER")
+		{
+			if (idenState[0] == true)
+			{
+				cout << "<Statement> -> <Assign>\n";
+				cout << "<Assign> -> <Identifier> = <Expression>;\n";
+				idenState[0] = false;
+				idenState[1] = true;
+			}
+			else if (idenState[1] == true)
+			{
+				cout << "<Expression> -> <Term> <Expression Prime>\n";
+				idenState[1] = false;
+				idenState[2] = true;
+			}
+			if (idenState[2] == true)
+			{
+				cout << "<Term> -> <Factor> <Term Prime>\n";
+				cout << "<Factor> -> <Identifier>\n";
+			}
+		}
+		if (lexName == "OPERATOR")
+		{
+			if (tokChar == '=')
+			{
+				opState[0] = true;
+			}
+			else if ((opState[0] == true) && (tokChar == '+'))
+			{
+				cout << "<Term Prime> -> E\n";
+				cout << "<Expression Prime> -> + <Term><Expression Prime>\n";
+			}
+			else if ((opState[0] == true) && (tokChar == '-'))
+			{
+				cout << "<Term Prime> -> E\n";
+				cout << "<Expression Prime> -> - <Term><Expression Prime>\n";
+			}
+			else if ((opState[0] == true) && (tokChar == '*'))
+			{
+				cout << "<Factor Prime> -> E\n";
+				cout << "< Term Prime> -> * <Factor><Term Prime>\n";
+			}
+			else if ((opState[0] == true) && (tokChar == '/'))
+			{
+				cout << "<Factor Prime> -> E\n";
+				cout << "< Term Prime> -> / <Factor><Term Prime>\n";
+			}
+			else if ((opState[0] == true) && (tokChar == '%'))
+			{
+				cout << "<Factor Prime> -> E\n";
+				cout << "< Term Prime> -> % <Factor><Term Prime>\n";
+			}
+			else
+			{
+				cout << "Invalid Input!\n";
+				invalid[0] = true;
+			}
+		}
+		if (lexName == "SEPARATOR")
+		{
+			if (tokChar == ';')
+			{
+				cout << "<Term Prime> -> E\n";
+				cout << "<Expression Prime> -> E\n";
+				idenState[0] = true;
+				idenState[1] = false;
+				idenState[2] = false;
+				opState[0] = false;
+			}
+		}
+	}
+}
+
