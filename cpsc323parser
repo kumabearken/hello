@@ -323,6 +323,7 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 	{
 		if (tokChar == '!')
 			comment[0] = false;
+			file << "end of comment\n";
 	}
 	else if (invalid[0] == true)
 	{
