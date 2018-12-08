@@ -12,10 +12,15 @@
 #include <string>
 #include <vector>
 #include <fstream>
+#include <stack>
 using namespace std;
 
 //global array size
-const int ARRSEP = 7;
+const int ARRSEP = 9;
+const int ARRKEYW = 11;
+
+//global stack frame;
+stack<char> sepMatch;
 
 // global token state array
 // idenState[0] = first identifier tester
@@ -23,13 +28,36 @@ const int ARRSEP = 7;
 // idenState[2] = for all identifiers
 bool idenState[3] = { true,false,false };
 
+//comment[0] switch for comment;
+bool comment[1] = { false };
+
 //opState[0] tests if first operator was an assignment
 bool opState[1] = { false };
+
 // if triggered statement breaks syntax
 bool invalid[1] = { false };
 bool sepstate[2];
 
+//keywords
+bool fun[99] = {false,false,false,false,false,false,false};
 
+//body
+bool body[1] = { false };
+
+//expression
+bool expression[1] = {false};
+
+//integer considered identifier
+bool intIsID[1] = { false };
+
+//checks main function
+bool mainTest[1] = { false };
+
+//checks if loop statement
+bool loops[3] = { false,false,false };
+
+//checks for completion
+bool complete[1] = { true };
 
 enum FSM_TRANSITIONS
 {
@@ -46,10 +74,10 @@ enum FSM_TRANSITIONS
 };
 
 //KEYWORDS
-string keywords[9] = { "int","if","else","endif","while","return","get","put"
-,"boolean" };
+string keywords[ARRKEYW] = { "int","if","else","endif","while","return","get","put"
+,"boolean","function","real" };
 string bools[2] = { "true","false" };
-char separator[ARRSEP] = { '(',')','{','}','[',']',';' };
+char separator[ARRSEP] = { '(',')','{','}','[',']',';', ':',',' };
 
 /*                           integer,    real,    operator,   identifier, unknown, space,  keyword, bool,   separator*/
 int stateTable[][10] = { {0,  INTEGER,    REAL,    OPERATOR,   IDENTIFIER, UNKNOWN, SPACE,  KEYWORD, BOOL,   SEPARATOR},
@@ -74,15 +102,16 @@ struct TokenType
 vector<TokenType> Lexer(string expression);
 int Get_FSM_Col(char currentChar);
 string GetLexemeName(int lexeme); 
-void parser(vector<TokenType> toks, int pos);
+void parser(vector<TokenType> toks, int pos,ofstream& file);
 
 int main()
 {
 	ifstream infile;
+	ofstream outfile ("new.txt");
 	string fileName = "";
 	string expression = "";
 	vector<TokenType> tokens;
-
+	int line = 1;
 	cout << "Please enter the name of the file: ";
 	getline(cin, fileName);
 
@@ -95,22 +124,29 @@ int main()
 		exit(1);
 	}
 
-	cout << "Token					Lexeme" << endl;
-	cout << "_______________________________________________" << endl;
+	outfile << "Token					Lexeme" << endl;
+	outfile << "_______________________________________________" << endl;
 	while (getline(infile, expression))
 	{
+		
 		tokens = Lexer(expression);
 		
 		for (unsigned i = 0; i < tokens.size(); ++i)
 		{
-			cout << tokens[i].lexemeName << "					"
+			outfile << tokens[i].lexemeName << "					"
 				<< tokens[i].token << endl;
-			parser(tokens,i);
-			cout << '\n';
+			parser(tokens,i,outfile);
+			if (invalid[0])
+			{
+				outfile << "ERROR at LINE " << line <<  ".\n";
+			}
+			outfile << '\n';
 		}
+		line++;
 	}
 
 	infile.close();
+	outfile.close();
 	system("pause");
 	return 0;
 }
@@ -144,7 +180,7 @@ vector<TokenType> Lexer(string expression)
 		{
 			if (prevState != SPACE)
 			{
-				for (int i = 0; i < 9; ++i)
+				for (int i = 0; i < ARRKEYW; ++i)
 				{
 					if (currentToken == keywords[i])
 					{
@@ -273,7 +309,7 @@ string GetLexemeName(int lexeme)
 		break;
 	}
 }
-void parser(vector<TokenType> toks,int pos)
+void parser(vector<TokenType> toks,int pos,ofstream& file)
 {
 	char tokChar;
 	string lexName;
@@ -283,29 +319,109 @@ void parser(vector<TokenType> toks,int pos)
 	lexName = someToken.lexemeName;
 	tokName = someToken.token;
 	tokChar = tokName[0];
-	if (invalid[0] == true)
-		cout << "invalid!";
-	else
+	if (comment[0] == true)
 	{
-		if (lexName == "IDENTIFIER")
+		if (tokChar == '!')
+			comment[0] = false;
+	}
+	else if (invalid[0] == true)
+	{
+		if (tokChar == ';')
+			invalid[0] = false;
+	}
+	else
 		{
-			if (idenState[0] == true)
+		if ((lexName == "KEYWORD") && (complete[0]))
+		{
+			if (tokName == "function")
 			{
-				cout << "<Statement> -> <Assign>\n";
-				cout << "<Assign> -> <Identifier> = <Expression>;\n";
-				idenState[0] = false;
+				file << "<Function> -> <Identifier> [ <Opt Parameter List>] <Opt Declaration List> <Body>\n";
+				fun[0] = true;
+				complete[0] = false;
+			}
+			if (tokName == "int")
+			{
+				if (fun[4])
+				{
+					file << "<Parameter> -> <Parameter> || ]\n";
+					fun[4] = false;
+					fun[5] = true;
+				}
+
+			}
+			if (tokName == "boolean")
+			{
+				if (fun[3])
+				{
+					file << "<Parameter> -> <Parameter> || ]\n";
+					fun[4] = true;
+					fun[3] = false;
+				}
+			}
+			if (tokName == "real")
+			{
+				if (fun[3])
+				{
+					file << "<Parameter> -> <Parameter> || ]\n";
+					fun[4] = true;
+					fun[3] = false;
+				}
+			}
+			if (tokName == "return")
+			{
+				opState[0] = true;
+				idenState[1] = true;
+				file << "return -> <Expression>\n";
+				complete[0] = false;
+			}
+			if (tokName == "while")
+			{
+				loops[0] = true;
+				complete[0] = false;
+			}
+			if (tokName == "get")
+			{
 				idenState[1] = true;
 			}
-			else if (idenState[1] == true)
+		}
+			
+		if ((lexName == "IDENTIFIER")||(intIsID[0]==true))
+		{
+			//function is triggered
+			if (fun[0])
 			{
-				cout << "<Expression> -> <Term> <Expression Prime>\n";
-				idenState[1] = false;
-				idenState[2] = true;
+				file << "<Identifier> -> [<Opt Paramter List>] <Opt Declartion List>\n";
+				fun[1] = true;
+				fun[0] = false;
 			}
-			if (idenState[2] == true)
+			else if (fun[2])
 			{
-				cout << "<Term> -> <Factor> <Term Prime>\n";
-				cout << "<Factor> -> <Identifier>\n";
+				file << "<Identifier> -> :<Qualifier>]";
+				fun[2] = false;
+				fun[3] = true;
+			}
+			else
+			{
+				if (idenState[0] == true)
+				{
+					file << "<Statement> -> <Assign>\n";
+					file << "<Assign> -> <Identifier> = <Expression>;\n";
+					complete[0] = false;
+					idenState[0] = false;
+					idenState[1] = true;
+				}
+				else if (idenState[1] == true)
+				{
+					file << "<Expression> -> <Term> <Expression Prime>\n";
+					idenState[1] = false;
+					idenState[2] = true;
+					complete[0] = false;
+				}
+				if (idenState[2] == true)
+				{
+					file << "<Term> -> <Factor> <Term Prime>\n";
+					file << "<Factor> -> <Identifier>\n";
+				}
 			}
 		}
 		if (lexName == "OPERATOR")
@@ -316,32 +432,69 @@ void parser(vector<TokenType> toks,int pos)
 			}
 			else if ((opState[0] == true) && (tokChar == '+'))
 			{
-				cout << "<Term Prime> -> E\n";
-				cout << "<Expression Prime> -> + <Term><Expression Prime>\n";
+				file << "<Term Prime> -> E\n";
+				file << "<Expression Prime> -> + <Term><Expression Prime>\n";
 			}
 			else if ((opState[0] == true) && (tokChar == '-'))
 			{
-				cout << "<Term Prime> -> E\n";
-				cout << "<Expression Prime> -> - <Term><Expression Prime>\n";
+				file << "<Term Prime> -> E\n";
+				file << "<Expression Prime> -> - <Term><Expression Prime>\n";
 			}
 			else if ((opState[0] == true) && (tokChar == '*'))
 			{
-				cout << "<Factor Prime> -> E\n";
-				cout << "< Term Prime> -> * <Factor><Term Prime>\n";
+				file << "<Factor Prime> -> E\n";
+				file << "< Term Prime> -> * <Factor><Term Prime>\n";
 			}
 			else if ((opState[0] == true) && (tokChar == '/'))
 			{
-				cout << "<Factor Prime> -> E\n";
-				cout << "< Term Prime> -> / <Factor><Term Prime>\n";
+				file << "<Factor Prime> -> E\n";
+				file << "< Term Prime> -> / <Factor><Term Prime>\n";
 			}
 			else if ((opState[0] == true) && (tokChar == '%'))
 			{
-				cout << "<Factor Prime> -> E\n";
-				cout << "< Term Prime> -> % <Factor><Term Prime>\n";
+				file << "<Factor Prime> -> E\n";
+				file << "< Term Prime> -> % <Factor><Term Prime>\n";
+			}
+			else if (tokChar == '<')
+			{
+				file << "<Factor Prime> -> E\n";
+				file << "< Term Prime> -> < <Factor><Term Prime>\n";
+			}
+			else if (tokChar == '>')
+			{
+				file << "<Factor Prime> -> E\n";
+				file << "< Term Prime> -> > <Factor><Term Prime>\n";
+			}
+			else if (tokChar == '!')
+			{
+				if (comment[0] == true)
+				{
+					comment[0] = false;
+					sepMatch.pop();
+					complete[0] = true;
+				}
+				else
+				{
+					comment[0] = true;
+					sepMatch.push('!');
+					complete[0] = false;
+				}
+				file << "comment";
+			}
+			else if (tokChar == '%')
+			{
+				if (mainTest[0])
+				{
+					file << "<main> -> <opt Declaration List> <Statement List>\n";
+				}
+				else
+				{
+					mainTest[0] = true;
+				}
 			}
 			else
 			{
-				cout << "Invalid Input!\n";
+				file << "Invalid Input!\n";
 				invalid[0] = true;
 			}
 		}
@@ -349,14 +502,151 @@ void parser(vector<TokenType> toks,int pos)
 		{
 			if (tokChar == ';')
 			{
-				cout << "<Term Prime> -> E\n";
-				cout << "<Expression Prime> -> E\n";
+				file << "<Term Prime> -> E\n";
+				file << "<Expression Prime> -> E\n";
 				idenState[0] = true;
 				idenState[1] = false;
 				idenState[2] = false;
 				opState[0] = false;
+				invalid[0] = false;
+				complete[0] = true;
+			}
+			if (tokChar == '[')
+			{
+				if (pos == 0)
+				{
+					invalid[0] = true;
+				}
+				else
+				{
+					TokenType thisToken;
+					thisToken = toks.at(pos - 1);
+					string thisLexeme;
+					thisLexeme = thisToken.lexemeName;
+					if (thisLexeme == "IDENTIFIER")
+					{
+						sepMatch.push('[');
+						file << "<Parameter>  -> <Identifier> : <Qualifier> ]\n";
+						fun[2] = true;
+					}
+				}
+			}
+			if (tokChar == ']')
+			{
+				TokenType thisToken;
+				thisToken = toks.at(pos - 1);
+				string thisLexeme;
+				thisLexeme = thisToken.lexemeName;
+				if ((thisLexeme == "KEYWORD") || (thisLexeme == "SEPARATOR"))
+				{
+					char thisChar = sepMatch.top();
+					sepMatch.pop();
+					if (thisChar == '[')
+					{
+						file << "<Parameter List> -> <Opt Declaration> <Body>\n";
+						body[0] = true;
+					}
+				}
+			}
+			if (tokChar == '{')
+			{
+				if (loops[2])
+				{
+					sepMatch.push('{');
+					file << "<Declaration> -> <Body> }\n";
+				}
+				else if (!body[0])
+				{
+					invalid[0] = true;
+				}
+				else
+				{					
+					sepMatch.push('{');
+					file << "<Declaration> -> <Body> }\n";
+					complete[0] = true;
+				}
+			}
+			if (tokChar == '}')
+			{
+				TokenType thisToken;
+				thisToken = toks.at(pos);
+				string thisLexeme;
+				thisLexeme = thisToken.lexemeName;
+
+				char thisChar = sepMatch.top();
+				sepMatch.pop();
+				if (thisChar == '{')
+				{
+					file << "<Declaration>\n";
+					body[0] = false;
+
+				}
+				else
+				{
+					invalid[0] = true;
+				}
+			}
+			if (tokChar == '(')
+			{
+				if (pos == 0)
+				{
+					invalid[0] = true;
+				}
+				else
+				{
+					TokenType thisToken;
+					thisToken = toks.at(pos - 1);
+					string thisLexeme;
+					thisLexeme = thisToken.lexemeName;
+					if (loops[0] == true)
+					{
+						loops[0] = false;
+						loops[1] = true;
+					}
+					if ((thisLexeme == "IDENTIFIER") || (thisLexeme == "SEPARATOR")||(thisLexeme=="KEYWORD")||(thisLexeme == "OPERATOR"))
+					{
+						sepMatch.push('(');
+						file << "<Parameter> -> );\n";
+						idenState[0] = false;
+						idenState[1] = true;
+					}
+				}
+			}
+			if (tokChar == ')')
+			{
+				TokenType thisToken;
+				thisToken = toks.at(pos);
+				string thisLexeme;
+				thisLexeme = thisToken.lexemeName;
+				if (loops[1] == true)
+				{
+					loops[1] = false;
+					loops[2] = true;
+					idenState[0] = true;
+					idenState[1] = false;
+					idenState[2] = false;
+					opState[0] = false;
+					invalid[0] = false;
+				}
+				if (thisLexeme == "SEPARATOR")
+				{
+					char thisChar = sepMatch.top();
+					sepMatch.pop();
+					if (thisChar == '(')
+						file << "<Parameter> -> ;\n";
+				}
+			}
+			if (tokChar == ':')
+			{
+				if (fun[3])
+				{
+					fun[4] = true;
+				}
+			}
+			if (tokChar == ',')
+			{
+
 			}
 		}
 	}
 }
-
