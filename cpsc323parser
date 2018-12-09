@@ -322,7 +322,12 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 	if (comment[0] == true)
 	{
 		if (tokChar == '!')
+		{
 			comment[0] = false;
+			sepMatch.pop();
+			complete[0] = true;
+			file << "end of comment\n";comment[0] = false;
+		}
 	}
 	else if (invalid[0] == true)
 	{
@@ -467,20 +472,10 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 			}
 			else if (tokChar == '!')
 			{
-				if (comment[0] == true)
-				{
-					comment[0] = false;
-					sepMatch.pop();
-					complete[0] = true;
-					file << "end of comment\n";
-				}
-				else
-				{
-					comment[0] = true;
-					sepMatch.push('!');
-					complete[0] = false;
-					file << "comment";
-				}
+				comment[0] = true;
+				sepMatch.push('!');
+				complete[0] = false;
+				file << "comment";
 			}
 			else if (tokChar == '%')
 			{
