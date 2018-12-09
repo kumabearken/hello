@@ -326,7 +326,7 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 			comment[0] = false;
 			sepMatch.pop();
 			complete[0] = true;
-			file << "end of comment\n";comment[0] = false;
+			file << "end of comment\n";
 		}
 	}
 	else if (invalid[0] == true)
