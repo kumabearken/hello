@@ -22,10 +22,6 @@ const int ARRKEYW = 11;
 // memory address
 int memAddress = 2000;
 
-//global stack frame;
-stack<char> sepMatch;
-stack<int> assemblyCode;
-
 // global token state array
 // idenState[0] = first identifier tester
 // idenState[1] = test for 2nd identifier
@@ -80,10 +76,17 @@ bool putCheat[1] = { false };
 // relative operators
 // 1 is <
 // 2 is >
+// 3 is ==
+// 4 is !=
+// 5 is <=
+// 6 is >=
 int relop[1];
 
 // arithmetic operators
 // 1 is +
+//2 is -
+// 3 is *
+// 4 is /
 int arOp[1];
 
 enum FSM_TRANSITIONS
@@ -145,6 +148,11 @@ struct AssemblyCodeInstructions
 
 //vectors
 vector <SymbolTable> symTab;
+
+//global stack frame;
+stack<char> sepMatch;
+stack<int> assemblyCode;
+stack<char> prevOp;
 stack<TokenType> variables;
 
 //arrays and vars for assembly code instructions
@@ -199,13 +207,15 @@ int main()
 		}
 		line++;
 	}
-	for (int i = 0; i < symTab.size(); ++i)
-	{
-		cout << symTab[i].name << '\t' << symTab[i].memAdd << '\t' << symTab[i].type << endl;
-	}
+	cout << "Assembly Code Listing\n";
 	for (int i = 0; i < counter; ++i)
 	{
 		cout << ACI[i].order << '\t' << ACI[i].instruction << '\t' << ACI[i].addOrVal << endl;
+	}
+	cout << "Identifier	MemoryLocation	Type\n";
+	for (int i = 0; i < symTab.size(); ++i)
+	{
+		cout << symTab[i].name << "\t\t" << symTab[i].memAdd << "\t\t" << symTab[i].type << endl;
 	}
 	infile.close();
 	outfile.close();
@@ -427,7 +437,6 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 				if (complete[0])
 				{
 					idenState[0] = false;
-					//idenState[2] = true;
 					varDec[0] = true;
 				}
 
@@ -526,7 +535,6 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 					file << "<Factor> -> <Identifier>\n";
 					if ((varDec[0]) || (varDec[1]) || (loops[1]) || (loops[2]) || (putCheat[0]))
 					{
-						//cout << "hello" << endl;
 						SymbolHandler(tokName);
 						variables.push(someToken);
 					}
@@ -537,6 +545,27 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 		{
 			if (tokChar == '=')
 			{
+				char tempChar = 'a';
+				if (!prevOp.empty())
+				{
+					char tempChar = prevOp.top();
+				}
+				if (tempChar == '=')
+				{
+					relop[0] = 3;
+				}
+				if (tempChar == '!')
+				{
+					relop[0] = 4;
+				}
+				if (tempChar == '<')
+				{
+					relop[0] = 5;
+				}
+				if (tempChar == '>')
+				{
+					relop[0] = 6;
+				}
 				opState[0] = true;
 			}
 			else if ((opState[0] == true) && (tokChar == '+'))
@@ -549,16 +578,19 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 			{
 				file << "<Term Prime> -> E\n";
 				file << "<Expression Prime> -> - <Term><Expression Prime>\n";
+				arOp[0] = 2;
 			}
 			else if ((opState[0] == true) && (tokChar == '*'))
 			{
 				file << "<Factor Prime> -> E\n";
 				file << "< Term Prime> -> * <Factor><Term Prime>\n";
+				arOp[0] = 3;
 			}
 			else if ((opState[0] == true) && (tokChar == '/'))
 			{
 				file << "<Factor Prime> -> E\n";
 				file << "< Term Prime> -> / <Factor><Term Prime>\n";
+				arOp[0] = 4;
 			}
 			else if ((opState[0] == true) && (tokChar == '%'))
 			{
@@ -573,6 +605,7 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 			}
 			else if (tokChar == '>')
 			{
+				relop[0] = 2;
 				file << "<Factor Prime> -> E\n";
 				file << "< Term Prime> -> > <Factor><Term Prime>\n";
 			}
@@ -599,11 +632,16 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 				file << "Invalid Input!\n";
 				invalid[0] = true;
 			}
+			prevOp.push(tokChar);
 		}
 		if (lexName == "SEPARATOR")
 		{
 			if (tokChar == ';')
 			{
+				while (!prevOp.empty())
+				{
+					prevOp.pop();
+				}
 				file << "<Term Prime> -> E\n";
 				file << "<Expression Prime> -> E\n";
 				//assign cases
@@ -611,6 +649,7 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 				{
 					TokenType tempToken;
 					TokenType tempToken2;
+					// need to  swapsince order backwards
 					if (arOp[0] != 0)
 					{
 						tempToken = variables.top();
@@ -625,7 +664,7 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 						tempToken = variables.top();
 						variables.pop();
 					}
-					//cout << tempToken.token<<endl;
+					//arithemtic for put()
 					if ((arOp[0] != 0) && (putCheat[0]))
 					{
 						for (int i = 0; i < 2; i++)
@@ -642,17 +681,47 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 								ins[0] = 1;
 								AssemblyCodeGeneration("", tempToken.token);
 								tempToken = variables.top();
-								//cout << tempToken.token << endl;
 								variables.pop();
 							}
 						}
-						//cout << tempToken.token << endl;
-						ins[0] = 5;
-						AssemblyCodeGeneration("", tempToken.token);
-						ins[0] = 3;
-						AssemblyCodeGeneration("", tempToken.token);
-						arOp[0] = 0;
+						//+
+						if (arOp[0] == 1)
+						{
+							ins[0] = 5;
+							AssemblyCodeGeneration("", tempToken.token);
+							ins[0] = 3;
+							AssemblyCodeGeneration("", tempToken.token);
+							arOp[0] = 0;
+						}
+						//-
+						if (arOp[0] == 2)
+						{
+							ins[0] = 6;
+							AssemblyCodeGeneration("", tempToken.token);
+							ins[0] = 3;
+							AssemblyCodeGeneration("", tempToken.token);
+							arOp[0] = 0;
+						}
+						//*
+						if (arOp[0] == 3)
+						{
+							ins[0] = 7;
+							AssemblyCodeGeneration("", tempToken.token);
+							ins[0] = 3;
+							AssemblyCodeGeneration("", tempToken.token);
+							arOp[0] = 0;
+						}
+						// /
+						if (arOp[0] == 4)
+						{
+							ins[0] = 8;
+							AssemblyCodeGeneration("", tempToken.token);
+							ins[0] = 3;
+							AssemblyCodeGeneration("", tempToken.token);
+							arOp[0] = 0;
+						}
 					}
+					//arithmetic assignment
 					else if (arOp[0] != 0)
 					{
 						for (int i = 0; i < 2; i++)
@@ -669,17 +738,47 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 								ins[0] = 1;
 								AssemblyCodeGeneration("", tempToken.token);
 								tempToken = variables.top();
-								//cout << tempToken.token << endl;
 								variables.pop();
 							}
 						}
-						//cout << tempToken.token << endl;
-						ins[0] = 5;
-						AssemblyCodeGeneration("", tempToken.token);
-						ins[0] = 2;
-						AssemblyCodeGeneration("", tempToken.token);
-						arOp[0] = 0;
+						//add
+						if (arOp[0] == 1)
+						{
+							ins[0] = 5;
+							AssemblyCodeGeneration("", tempToken.token);
+							ins[0] = 2;
+							AssemblyCodeGeneration("", tempToken.token);
+							arOp[0] = 0;
+						}
+						//sub
+						if (arOp[0] == 2)
+						{
+							ins[0] = 6;
+							AssemblyCodeGeneration("", tempToken.token);
+							ins[0] = 2;
+							AssemblyCodeGeneration("", tempToken.token);
+							arOp[0] = 0;
+						}
+						//mul
+						if (arOp[0] == 3)
+						{
+							ins[0] = 7;
+							AssemblyCodeGeneration("", tempToken.token);
+							ins[0] = 2;
+							AssemblyCodeGeneration("", tempToken.token);
+							arOp[0] = 0;
+						}
+						// div
+						if (arOp[0] == 4)
+						{
+							ins[0] = 8;
+							AssemblyCodeGeneration("", tempToken.token);
+							ins[0] = 2;
+							AssemblyCodeGeneration("", tempToken.token);
+							arOp[0] = 0;
+						}
 					}
+					//simple assignment
 					else
 					{
 						if (tempToken.lexemeName == "INTEGER")
@@ -703,6 +802,7 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 						}
 					}
 				}
+				//stdin get()
 				if (ins[0] == 4)
 				{
 					TokenType tempToken = variables.top();
@@ -784,6 +884,10 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 				thisToken = toks.at(pos);
 				string thisLexeme;
 				thisLexeme = thisToken.lexemeName;
+				while (!prevOp.empty())
+				{
+					prevOp.pop();
+				}
 
 				char thisChar = sepMatch.top();
 				sepMatch.pop();
@@ -847,6 +951,10 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 					idenState[2] = false;
 					opState[0] = false;
 					invalid[0] = false;
+					while (!prevOp.empty())
+					{
+						prevOp.pop();
+					}
 
 
 					TokenType tempToken = variables.top();
@@ -869,9 +977,55 @@ void parser(vector<TokenType> toks, int pos, ofstream& file)
 						AssemblyCodeGeneration("", tempToken2.token);
 						AssemblyCodeGeneration("", tempToken.token);
 					}
+					//<
 					if (relop[0] == 1)
 					{
 						ins[0] = 10;
+						AssemblyCodeGeneration("", "");
+						ins[0] = 15;
+						AssemblyCodeGeneration("", "");
+						relop[0] = 0;
+					}
+					//>
+					if (relop[0] == 2)
+					{
+						ins[0] = 9;
+						AssemblyCodeGeneration("", "");
+						ins[0] = 15;
+						AssemblyCodeGeneration("", "");
+						relop[0] = 0;
+					}
+					//==
+					if (relop[0] == 3)
+					{
+						ins[0] = 11;
+						AssemblyCodeGeneration("", "");
+						ins[0] = 15;
+						AssemblyCodeGeneration("", "");
+						relop[0] = 0;
+					}
+					//!=
+					if (relop[0] == 4)
+					{
+						ins[0] = 12;
+						AssemblyCodeGeneration("", "");
+						ins[0] = 15;
+						AssemblyCodeGeneration("", "");
+						relop[0] = 0;
+					}
+					//<=
+					if (relop[0] == 5)
+					{
+						ins[0] = 14;
+						AssemblyCodeGeneration("", "");
+						ins[0] = 15;
+						AssemblyCodeGeneration("", "");
+						relop[0] = 0;
+					}
+					//>=
+					if (relop[0] == 6)
+					{
+						ins[0] = 13;
 						AssemblyCodeGeneration("", "");
 						ins[0] = 15;
 						AssemblyCodeGeneration("", "");
@@ -911,7 +1065,6 @@ void SymbolHandler(string symName)
 			newTab.type = "integer";
 		if (varDec[1])
 			newTab.type = "boolean";
-		//cout << symName << "    " << memAddress << "	" << newTab.type << endl; 
 		newTab.name = symName;
 		newTab.memAdd = memAddress;
 		symTab.push_back(newTab);
@@ -936,7 +1089,6 @@ void SymbolHandler(string symName)
 				newTab.type = "boolean";
 			newTab.name = symName;
 			newTab.memAdd = memAddress;
-			//cout << symName << "    " << memAddress << "	" << newTab.type <<  endl;
 			symTab.push_back(newTab);
 			memAddress++;
 		}
@@ -945,9 +1097,9 @@ void SymbolHandler(string symName)
 	{
 		for (int i = 0; i < symTab.size(); ++i)
 		{
+			//good
 			if ((symTab[i].name == symName) && ((!varDec[0]) || (!varDec[1])))
 			{
-				//cout << "good\n";
 				hit = true;
 			}
 		}
@@ -961,8 +1113,8 @@ void SymbolHandler(string symName)
 /*
 *	Function: AssemblyCodeGeneration
 *	Use - uses a code and generates assembly code instructions
-*	Param -
-*	Return -
+*	Param - strings that represents an int value or variable name
+*	Return - void
 */
 
 void AssemblyCodeGeneration(string IV, string varName)
@@ -984,7 +1136,6 @@ void AssemblyCodeGeneration(string IV, string varName)
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "PUSHI";
 		ACI[counter].addOrVal = IV;
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << '\t' << ACI[counter].addOrVal << endl;
 		counter++;
 		assemblyCode.push(stoi(IV));
 	}
@@ -994,7 +1145,6 @@ void AssemblyCodeGeneration(string IV, string varName)
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "PUSHM";
 		ACI[counter].addOrVal = to_string(symTab[here].memAdd);
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << '\t' << ACI[counter].addOrVal << endl;
 		counter++;
 		subs = symTab[here].value;
 		assemblyCode.push(subs);
@@ -1005,7 +1155,6 @@ void AssemblyCodeGeneration(string IV, string varName)
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "POPM";
 		ACI[counter].addOrVal = to_string(symTab[here].memAdd);
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << '\t' << ACI[counter].addOrVal << endl;
 		counter++;
 		subs = assemblyCode.top();
 		assemblyCode.pop();
@@ -1016,7 +1165,6 @@ void AssemblyCodeGeneration(string IV, string varName)
 	{
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "STDOUT";
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
 		counter++;
 		subs = assemblyCode.top();
 		cout << subs << '\n';
@@ -1026,11 +1174,9 @@ void AssemblyCodeGeneration(string IV, string varName)
 	{
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "STDIN";
-		//ACI[counter].addOrVal = stoi(IV);
 		cout << "Enter number: ";
 		int userIn;
 		cin >> userIn;
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
 		counter++;
 		assemblyCode.push(userIn);
 	}
@@ -1039,7 +1185,6 @@ void AssemblyCodeGeneration(string IV, string varName)
 	{
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "ADD";
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
 		counter++;
 		subs = assemblyCode.top();
 		assemblyCode.pop();
@@ -1103,7 +1248,6 @@ void AssemblyCodeGeneration(string IV, string varName)
 	{
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "LES";
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
 		counter++;
 		subs = assemblyCode.top();
 		assemblyCode.pop();
@@ -1179,9 +1323,7 @@ void AssemblyCodeGeneration(string IV, string varName)
 	{
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "JUMPZ";
-		//ACI[counter].addOrVal = 21;
 		jumpzLoc[0] = counter;
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
 		counter++;
 		subs = assemblyCode.top();
 		assemblyCode.pop();
@@ -1196,7 +1338,6 @@ void AssemblyCodeGeneration(string IV, string varName)
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "JUMP";
 		ACI[counter].addOrVal = to_string(jumpLoc[0]);
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << '\t' << ACI[counter].addOrVal << endl;
 		++counter;
 		//counter = jumpLoc[0];
 	}
@@ -1206,7 +1347,6 @@ void AssemblyCodeGeneration(string IV, string varName)
 		ACI[counter].order = counter + 1;
 		ACI[counter].instruction = "LABEL";
 		jumpLoc[0] = counter + 1;
-		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
 		counter++;
 	}
 }
