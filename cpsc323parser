@@ -19,8 +19,12 @@ using namespace std;
 const int ARRSEP = 9;
 const int ARRKEYW = 11;
 
+// memory address
+int memAddress = 2000;
+
 //global stack frame;
 stack<char> sepMatch;
+stack<int> assemblyCode;
 
 // global token state array
 // idenState[0] = first identifier tester
@@ -39,13 +43,13 @@ bool invalid[1] = { false };
 bool sepstate[2];
 
 //keywords
-bool fun[99] = {false,false,false,false,false,false,false};
+bool fun[99] = { false,false,false,false,false,false,false };
 
 //body
 bool body[1] = { false };
 
 //expression
-bool expression[1] = {false};
+bool expression[1] = { false };
 
 //integer considered identifier
 bool intIsID[1] = { false };
@@ -58,6 +62,29 @@ bool loops[3] = { false,false,false };
 
 //checks for completion
 bool complete[1] = { true };
+
+// variable declaration
+// varDec[0] is integer
+// varDec[1] is bool
+bool varDec[2] = { false,false };
+
+// instruction
+int ins[1];
+
+// location to jump to
+int jumpLoc[1];
+int jumpzLoc[1];
+
+bool putCheat[1] = { false };
+
+// relative operators
+// 1 is <
+// 2 is >
+int relop[1];
+
+// arithmetic operators
+// 1 is +
+int arOp[1];
 
 enum FSM_TRANSITIONS
 {
@@ -74,23 +101,25 @@ enum FSM_TRANSITIONS
 };
 
 //KEYWORDS
-string keywords[ARRKEYW] = { "int","if","else","endif","while","return","get","put"
+string keywords[ARRKEYW] = { "integer","if","else","endif","while","return","get","put"
 ,"boolean","function","real" };
 string bools[2] = { "true","false" };
 char separator[ARRSEP] = { '(',')','{','}','[',']',';', ':',',' };
 
 /*                           integer,    real,    operator,   identifier, unknown, space,  keyword, bool,   separator*/
-int stateTable[][10] = { {0,  INTEGER,    REAL,    OPERATOR,   IDENTIFIER, UNKNOWN, SPACE,  KEYWORD, BOOL,   SEPARATOR},
-/* STATE 1 */   {INTEGER,    INTEGER,    REAL,    REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT},
-/* STATE 2 */   {REAL,       REAL,       UNKNOWN, REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT},
-/* STATE 3 */   {OPERATOR,   REJECT,     REJECT,  REJECT,     IDENTIFIER, REJECT,  REJECT, REJECT,  REJECT, REJECT},
-/* STATE 4 */   {IDENTIFIER, IDENTIFIER, REJECT,  IDENTIFIER, IDENTIFIER, REJECT,  REJECT, REJECT,  REJECT, REJECT},
-/* STATE 5 */   {UNKNOWN,    UNKNOWN,    UNKNOWN, UNKNOWN,    UNKNOWN,    UNKNOWN, REJECT, REJECT,  REJECT, REJECT},
-/* STATE 6 */   {SPACE,      REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT},
-/* STATE 7 */   {KEYWORD,    KEYWORD,    REJECT,  KEYWORD,    KEYWORD,    REJECT,  REJECT, KEYWORD, REJECT, REJECT},
-/* STATE 8 */   {BOOL,       REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  BOOL,   REJECT},
-/* STATE 9 */   {SEPARATOR,  REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT}
+int stateTable[][10] = { { 0,  INTEGER,    REAL,    OPERATOR,   IDENTIFIER, UNKNOWN, SPACE,  KEYWORD, BOOL,   SEPARATOR },
+/* STATE 1 */{ INTEGER,    INTEGER,    REAL,    REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT },
+/* STATE 2 */{ REAL,       REAL,       UNKNOWN, REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT },
+/* STATE 3 */{ OPERATOR,   REJECT,     REJECT,  REJECT,     IDENTIFIER, REJECT,  REJECT, REJECT,  REJECT, REJECT },
+/* STATE 4 */{ IDENTIFIER, IDENTIFIER, REJECT,  IDENTIFIER, IDENTIFIER, REJECT,  REJECT, REJECT,  REJECT, REJECT },
+/* STATE 5 */{ UNKNOWN,    UNKNOWN,    UNKNOWN, UNKNOWN,    UNKNOWN,    UNKNOWN, REJECT, REJECT,  REJECT, REJECT },
+/* STATE 6 */{ SPACE,      REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT },
+/* STATE 7 */{ KEYWORD,    KEYWORD,    REJECT,  KEYWORD,    KEYWORD,    REJECT,  REJECT, KEYWORD, REJECT, REJECT },
+/* STATE 8 */{ BOOL,       REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  BOOL,   REJECT },
+/* STATE 9 */{ SEPARATOR,  REJECT,     REJECT,  REJECT,     REJECT,     REJECT,  REJECT, REJECT,  REJECT, REJECT }
 };
+
+//Structures&Classes
 
 struct TokenType
 {
@@ -99,22 +128,48 @@ struct TokenType
 	string lexemeName;
 };
 
+struct SymbolTable
+{
+	string name;
+	int memAdd;
+	int value;
+	string type;
+};
+
+struct AssemblyCodeInstructions
+{
+	int order=0;
+	string instruction = "";
+	string addOrVal = "";
+};
+
+//vectors
+vector <SymbolTable> symTab;
+stack<TokenType> variables;
+
+//arrays and vars for assembly code instructions
+AssemblyCodeInstructions ACI[1000];
+int counter = 0;
+
+// Function prototypes
 vector<TokenType> Lexer(string expression);
 int Get_FSM_Col(char currentChar);
-string GetLexemeName(int lexeme); 
-void parser(vector<TokenType> toks, int pos,ofstream& file);
+string GetLexemeName(int lexeme);
+void parser(vector<TokenType> toks, int pos, ofstream& file);
+void SymbolHandler(string symName);
+void AssemblyCodeGeneration(string IV, string varName);
 
 int main()
 {
 	ifstream infile;
-	ofstream outfile ("new.txt");
+	ofstream outfile("new.txt");
 	string fileName = "";
 	string expression = "";
 	vector<TokenType> tokens;
 	int line = 1;
 	cout << "Please enter the name of the file: ";
-	getline(cin, fileName);
 
+	getline(cin, fileName);
 	infile.open(fileName.c_str());
 
 	if (infile.fail())
@@ -128,23 +183,30 @@ int main()
 	outfile << "_______________________________________________" << endl;
 	while (getline(infile, expression))
 	{
-		
+
 		tokens = Lexer(expression);
-		
+
 		for (unsigned i = 0; i < tokens.size(); ++i)
 		{
 			outfile << tokens[i].lexemeName << "					"
 				<< tokens[i].token << endl;
-			parser(tokens,i,outfile);
+			parser(tokens, i, outfile);
 			if (invalid[0])
 			{
-				outfile << "ERROR at LINE " << line <<  ".\n";
+				outfile << "ERROR at LINE " << line << ".\n";
 			}
 			outfile << '\n';
 		}
 		line++;
 	}
-
+	for (int i = 0; i < symTab.size(); ++i)
+	{
+		cout << symTab[i].name << '\t' << symTab[i].memAdd << '\t' << symTab[i].type << endl;
+	}
+	for (int i = 0; i < counter; ++i)
+	{
+		cout << ACI[i].order << '\t' << ACI[i].instruction << '\t' << ACI[i].addOrVal << endl;
+	}
 	infile.close();
 	outfile.close();
 	system("pause");
@@ -266,7 +328,7 @@ int Get_FSM_Col(char currentChar)
 	return UNKNOWN;
 }
 
-/**
+/*
 * FUNCTION: GetLexemeName
 * USE: Returns the string equivalent of an integer lexeme token type.
 * param lexeme - An integer lexeme token type.
@@ -309,13 +371,19 @@ string GetLexemeName(int lexeme)
 		break;
 	}
 }
-void parser(vector<TokenType> toks,int pos,ofstream& file)
+/*
+*	Function: Parser
+*	Use - takes a token and determines whether it is being used in a proper format
+*	Param - a vector of struct TokenType, integer of location of token in vector, and a output file to write to
+*	Return - void
+*/
+void parser(vector<TokenType> toks, int pos, ofstream& file)
 {
 	char tokChar;
 	string lexName;
 	string tokName;
 	TokenType someToken;
-	someToken=toks.at(pos);
+	someToken = toks.at(pos);
 	lexName = someToken.lexemeName;
 	tokName = someToken.token;
 	tokChar = tokName[0];
@@ -335,7 +403,11 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 			invalid[0] = false;
 	}
 	else
+	{
+		if (lexName == "INTEGER")
 		{
+			variables.push(someToken);
+		}
 		if ((lexName == "KEYWORD") && (complete[0]))
 		{
 			if (tokName == "function")
@@ -344,13 +416,19 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 				fun[0] = true;
 				complete[0] = false;
 			}
-			if (tokName == "int")
+			if (tokName == "integer")
 			{
 				if (fun[4])
 				{
 					file << "<Parameter> -> <Parameter> || ]\n";
 					fun[4] = false;
 					fun[5] = true;
+				}
+				if (complete[0])
+				{
+					idenState[0] = false;
+					//idenState[2] = true;
+					varDec[0] = true;
 				}
 
 			}
@@ -361,6 +439,11 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 					file << "<Parameter> -> <Parameter> || ]\n";
 					fun[4] = true;
 					fun[3] = false;
+				}
+				if (complete[0])
+				{
+					idenState[0] = false;
+					varDec[1] = true;
 				}
 			}
 			if (tokName == "real")
@@ -383,14 +466,25 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 			{
 				loops[0] = true;
 				complete[0] = false;
+				ins[0] = 99;
+				idenState[0] = false;
+				idenState[2] = true;
+				AssemblyCodeGeneration("", "");
 			}
 			if (tokName == "get")
 			{
 				idenState[1] = true;
+				ins[0] = 4;
+			}
+			if (tokName == "put")
+			{
+				idenState[1] = true;
+				opState[0] = true;
+				putCheat[0] = true;
 			}
 		}
-			
-		if ((lexName == "IDENTIFIER")||(intIsID[0]==true))
+
+		if ((lexName == "IDENTIFIER") || (intIsID[0] == true))
 		{
 			//function is triggered
 			if (fun[0])
@@ -414,6 +508,8 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 					complete[0] = false;
 					idenState[0] = false;
 					idenState[1] = true;
+					SymbolHandler(tokName);
+					variables.push(someToken);
 				}
 				else if (idenState[1] == true)
 				{
@@ -421,11 +517,19 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 					idenState[1] = false;
 					idenState[2] = true;
 					complete[0] = false;
+					SymbolHandler(tokName);
+					variables.push(someToken);
 				}
-				if (idenState[2] == true)
+				else if ((idenState[2] == true) || ((varDec[0]) || (varDec[1])))
 				{
 					file << "<Term> -> <Factor> <Term Prime>\n";
 					file << "<Factor> -> <Identifier>\n";
+					if ((varDec[0]) || (varDec[1]) || (loops[1]) || (loops[2]) || (putCheat[0]))
+					{
+						//cout << "hello" << endl;
+						SymbolHandler(tokName);
+						variables.push(someToken);
+					}
 				}
 			}
 		}
@@ -439,6 +543,7 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 			{
 				file << "<Term Prime> -> E\n";
 				file << "<Expression Prime> -> + <Term><Expression Prime>\n";
+				arOp[0] = 1;
 			}
 			else if ((opState[0] == true) && (tokChar == '-'))
 			{
@@ -462,6 +567,7 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 			}
 			else if (tokChar == '<')
 			{
+				relop[0] = 1;
 				file << "<Factor Prime> -> E\n";
 				file << "< Term Prime> -> < <Factor><Term Prime>\n";
 			}
@@ -500,12 +606,122 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 			{
 				file << "<Term Prime> -> E\n";
 				file << "<Expression Prime> -> E\n";
+				//assign cases
+				if (opState[0])
+				{
+					TokenType tempToken;
+					TokenType tempToken2;
+					if (arOp[0] != 0)
+					{
+						tempToken = variables.top();
+						variables.pop();
+						tempToken2 = variables.top();
+						variables.pop();
+						variables.push(tempToken);
+						tempToken = tempToken2;
+					}
+					else
+					{
+						tempToken = variables.top();
+						variables.pop();
+					}
+					//cout << tempToken.token<<endl;
+					if ((arOp[0] != 0) && (putCheat[0]))
+					{
+						for (int i = 0; i < 2; i++)
+						{
+							if (tempToken.lexemeName == "INTEGER")
+							{
+								ins[0] = 0;
+								AssemblyCodeGeneration(tempToken.token, "");
+								tempToken = variables.top();
+								variables.pop();
+							}
+							else if (tempToken.lexemeName == "IDENTIFIER")
+							{
+								ins[0] = 1;
+								AssemblyCodeGeneration("", tempToken.token);
+								tempToken = variables.top();
+								//cout << tempToken.token << endl;
+								variables.pop();
+							}
+						}
+						//cout << tempToken.token << endl;
+						ins[0] = 5;
+						AssemblyCodeGeneration("", tempToken.token);
+						ins[0] = 3;
+						AssemblyCodeGeneration("", tempToken.token);
+						arOp[0] = 0;
+					}
+					else if (arOp[0] != 0)
+					{
+						for (int i = 0; i < 2; i++)
+						{
+							if (tempToken.lexemeName == "INTEGER")
+							{
+								ins[0] = 0;
+								AssemblyCodeGeneration(tempToken.token, "");
+								tempToken = variables.top();
+								variables.pop();
+							}
+							else if (tempToken.lexemeName == "IDENTIFIER")
+							{
+								ins[0] = 1;
+								AssemblyCodeGeneration("", tempToken.token);
+								tempToken = variables.top();
+								//cout << tempToken.token << endl;
+								variables.pop();
+							}
+						}
+						//cout << tempToken.token << endl;
+						ins[0] = 5;
+						AssemblyCodeGeneration("", tempToken.token);
+						ins[0] = 2;
+						AssemblyCodeGeneration("", tempToken.token);
+						arOp[0] = 0;
+					}
+					else
+					{
+						if (tempToken.lexemeName == "INTEGER")
+						{
+							ins[0] = 0;
+							AssemblyCodeGeneration(tempToken.token, "");
+							ins[0] = 2;
+							tempToken = variables.top();
+							variables.pop();
+							AssemblyCodeGeneration("", tempToken.token);
+
+						}
+						else if (tempToken.lexemeName == "IDENTIFIER")
+						{
+							ins[0] = 1;
+							AssemblyCodeGeneration("", tempToken.token);
+							tempToken = variables.top();
+							variables.pop();
+							ins[0] = 2;
+							AssemblyCodeGeneration("", tempToken.token);
+						}
+					}
+				}
+				if (ins[0] == 4)
+				{
+					TokenType tempToken = variables.top();
+					variables.pop();
+					if (tempToken.lexemeName == "IDENTIFIER")
+					{
+						AssemblyCodeGeneration("", tempToken.token);
+						ins[0] = 2;
+						AssemblyCodeGeneration("", tempToken.token);
+					}
+				}
 				idenState[0] = true;
 				idenState[1] = false;
 				idenState[2] = false;
 				opState[0] = false;
 				invalid[0] = false;
 				complete[0] = true;
+				varDec[0] = false;
+				varDec[1] = false;
 			}
 			if (tokChar == '[')
 			{
@@ -556,7 +772,7 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 					invalid[0] = true;
 				}
 				else
-				{					
+				{
 					sepMatch.push('{');
 					file << "<Declaration> -> <Body> }\n";
 					complete[0] = true;
@@ -571,11 +787,19 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 
 				char thisChar = sepMatch.top();
 				sepMatch.pop();
-				if (thisChar == '{')
+				if ((thisChar == '{') && (loops[2] == true))
 				{
 					file << "<Declaration>\n";
 					body[0] = false;
-
+					loops[2] = false;
+					ins[0] = 16;
+					AssemblyCodeGeneration("", "");
+					ACI[jumpzLoc[0]].addOrVal = to_string(counter+1);
+				}
+				else if (thisChar == '{')
+				{
+						file << "<Declaration>\n";
+						body[0] = false;
 				}
 				else
 				{
@@ -599,7 +823,7 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 						loops[0] = false;
 						loops[1] = true;
 					}
-					if ((thisLexeme == "IDENTIFIER") || (thisLexeme == "SEPARATOR")||(thisLexeme=="KEYWORD")||(thisLexeme == "OPERATOR"))
+					if ((thisLexeme == "IDENTIFIER") || (thisLexeme == "SEPARATOR") || (thisLexeme == "KEYWORD") || (thisLexeme == "OPERATOR"))
 					{
 						sepMatch.push('(');
 						file << "<Parameter> -> );\n";
@@ -623,8 +847,38 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 					idenState[2] = false;
 					opState[0] = false;
 					invalid[0] = false;
+
+
+					TokenType tempToken = variables.top();
+					variables.pop();
+					TokenType tempToken2 = variables.top();
+					variables.pop();
+					if (tempToken.lexemeName == "INTEGER")
+					{
+						ins[0] = 0;
+						AssemblyCodeGeneration(tempToken.token, "");
+						ins[0] = 2;
+						tempToken = variables.top();
+						variables.pop();
+						AssemblyCodeGeneration("", tempToken.token);
+
+					}
+					else if (tempToken.lexemeName == "IDENTIFIER")
+					{
+						ins[0] = 1;
+						AssemblyCodeGeneration("", tempToken2.token);
+						AssemblyCodeGeneration("", tempToken.token);
+					}
+					if (relop[0] == 1)
+					{
+						ins[0] = 10;
+						AssemblyCodeGeneration("", "");
+						ins[0] = 15;
+						AssemblyCodeGeneration("", "");
+						relop[0] = 0;
+					}
 				}
-				if (thisLexeme == "SEPARATOR")
+				else if (thisLexeme == "SEPARATOR")
 				{
 					char thisChar = sepMatch.top();
 					sepMatch.pop();
@@ -644,5 +898,315 @@ void parser(vector<TokenType> toks,int pos,ofstream& file)
 
 			}
 		}
+	}
+}
+
+void SymbolHandler(string symName)
+{
+	bool hit = false;
+	if (symTab.size() == 0)
+	{
+		SymbolTable newTab;
+		if (varDec[0])
+			newTab.type = "integer";
+		if (varDec[1])
+			newTab.type = "boolean";
+		//cout << symName << "    " << memAddress << "	" << newTab.type << endl; 
+		newTab.name = symName;
+		newTab.memAdd = memAddress;
+		symTab.push_back(newTab);
+		memAddress++;
+	}
+	else if ((varDec[0]) || (varDec[1]))
+	{
+		for (int i = 0; i < symTab.size(); ++i)
+		{
+			if ((symTab[i].name == symName) && ((varDec[0]) || (varDec[1])))
+			{
+				cout << "ERROR:: cannot declare another variable with the same name \n";
+				hit = true;
+			}
+		}
+		if (!hit)
+		{
+			SymbolTable newTab;
+			if (varDec[0])
+				newTab.type = "integer";
+			if (varDec[1])
+				newTab.type = "boolean";
+			newTab.name = symName;
+			newTab.memAdd = memAddress;
+			//cout << symName << "    " << memAddress << "	" << newTab.type <<  endl;
+			symTab.push_back(newTab);
+			memAddress++;
+		}
+	}
+	else
+	{
+		for (int i = 0; i < symTab.size(); ++i)
+		{
+			if ((symTab[i].name == symName) && ((!varDec[0]) || (!varDec[1])))
+			{
+				//cout << "good\n";
+				hit = true;
+			}
+		}
+		if (!hit)
+		{
+			cout << "ERROR:: variable not declared\n";
+		}
+	}
+}
+
+/*
+*	Function: AssemblyCodeGeneration
+*	Use - uses a code and generates assembly code instructions
+*	Param -
+*	Return -
+*/
+
+void AssemblyCodeGeneration(string IV, string varName)
+{
+	int here;
+	for (int i = 0; i < symTab.size(); ++i)
+	{
+		if (varName == symTab[i].name)
+		{
+			here = i;
+		}
+	}
+	int subs;
+	int subs2;
+
+	//PUSHI
+	if (ins[0] == 0)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "PUSHI";
+		ACI[counter].addOrVal = IV;
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << '\t' << ACI[counter].addOrVal << endl;
+		counter++;
+		assemblyCode.push(stoi(IV));
+	}
+	//PUSHM
+	else if (ins[0] == 1)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "PUSHM";
+		ACI[counter].addOrVal = to_string(symTab[here].memAdd);
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << '\t' << ACI[counter].addOrVal << endl;
+		counter++;
+		subs = symTab[here].value;
+		assemblyCode.push(subs);
+	}
+	//POPM
+	else if (ins[0] == 2)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "POPM";
+		ACI[counter].addOrVal = to_string(symTab[here].memAdd);
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << '\t' << ACI[counter].addOrVal << endl;
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		symTab[here].value = subs;
+	}
+	//STDOUT
+	else if (ins[0] == 3)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "STDOUT";
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
+		counter++;
+		subs = assemblyCode.top();
+		cout << subs << '\n';
+	}
+	//STDIN
+	else if (ins[0] == 4)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "STDIN";
+		//ACI[counter].addOrVal = stoi(IV);
+		cout << "Enter number: ";
+		int userIn;
+		cin >> userIn;
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
+		counter++;
+		assemblyCode.push(userIn);
+	}
+	//ADD
+	else if (ins[0] == 5)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "ADD";
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		assemblyCode.push(subs + subs2);
+	}
+	//SUB
+	else if (ins[0] == 6)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "SUB";
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		assemblyCode.push(subs2 - subs);
+	}
+	//MUL
+	else if (ins[0] == 7)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "MUL";
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		assemblyCode.push(subs2 * subs);
+	}
+	//DIV
+	else if (ins[0] == 8)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "DIV";
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		assemblyCode.push(subs2 / subs);
+	}
+	//GRT
+	else if (ins[0] == 9)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "GRT";
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		if (subs2 > subs)
+			assemblyCode.push(1);
+		else
+			assemblyCode.push(0);
+	}
+	//LES
+	else if (ins[0] == 10)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "LES";
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		if (subs2 < subs)
+			assemblyCode.push(1);
+		else
+			assemblyCode.push(0);
+	}
+	//EQU
+	else if (ins[0] == 11)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "EQU";
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		if (subs2 == subs)
+			assemblyCode.push(1);
+		else
+			assemblyCode.push(0);
+	}
+	//NEQ
+	else if (ins[0] == 12)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "GRT";
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		if (subs2 != subs)
+			assemblyCode.push(1);
+		else
+			assemblyCode.push(0);
+	}
+	//GEQ
+	else if (ins[0] == 13)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "GEQ";
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		if (subs2 >= subs)
+			assemblyCode.push(1);
+		else
+			assemblyCode.push(0);
+	}
+	//LEQ
+	else if (ins[0] == 14)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "LEQ";
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		subs2 = assemblyCode.top();
+		assemblyCode.pop();
+		if (subs2 <= subs)
+			assemblyCode.push(1);
+		else
+			assemblyCode.push(0);
+	}
+	//JUMPZ
+	else if (ins[0] == 15)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "JUMPZ";
+		//ACI[counter].addOrVal = 21;
+		jumpzLoc[0] = counter;
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
+		counter++;
+		subs = assemblyCode.top();
+		assemblyCode.pop();
+		if (subs == 0)
+		{
+			counter = counter;
+		}
+	}
+	//JUMP
+	else if (ins[0] == 16)
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "JUMP";
+		ACI[counter].addOrVal = to_string(jumpLoc[0]);
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << '\t' << ACI[counter].addOrVal << endl;
+		++counter;
+		//counter = jumpLoc[0];
+	}
+	//LABEL
+	else
+	{
+		ACI[counter].order = counter + 1;
+		ACI[counter].instruction = "LABEL";
+		jumpLoc[0] = counter + 1;
+		//cout << ACI[counter].order << '\t' << ACI[counter].instruction << endl;
+		counter++;
 	}
 }
