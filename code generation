@@ -4,6 +4,8 @@
 //   File: Lexer.cpp
 //   Description: The following demonstrates the implementation of
 //     Lexer using a table driven Finite State Machine.
+//	Parser for rat18s language
+// 	assembly code generator
 // ============================================================================
 
 #include <iostream>
