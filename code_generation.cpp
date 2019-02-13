@@ -221,7 +221,7 @@ int main()
 	}
 	infile.close();
 	outfile.close();
-	system("pause");
+	cin.get();
 	return 0;
 }
 
