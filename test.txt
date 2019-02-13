@@ -1,0 +1,13 @@
+     %%
+	integer   i, max, sum;
+	
+	
+
+	sum = 0;
+	i = 10;
+	get ( max);
+	while (i <  max)  {
+      	sum = sum + i;
+      	i  = i + 2;
+ 	}
+ 	put (sum + max);
